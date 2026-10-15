@@ -89,17 +89,3 @@ npm install
   ```bash
   npm run dev
   ```
-
----
-
-## Documented Assumptions
-
-In accordance with [requirements.md](requirements.md):
-
-* **AS-01 (Single Group)**: The system manages exactly one Susu savings group per application instance.
-* **AS-02 (In-Memory Storage)**: All data is held in-memory for the current session.
-* **AS-03 (Volatile Lifecycle)**: State is reset when the process exits.
-* **AS-04 (Minimum Size)**: The group requires at least one registered member before a week can begin or close.
-* **AS-05 (Universal Obligation)**: Every member must contribute every week, including the member receiving the pot that week.
-* **AS-06 (No Member Removal)**: Member departures or mid-cycle dropouts are outside the initial scope.
-* **AS-07 (Cycle Completion)**: The savings cycle completes once every registered member has received their pot payout.
