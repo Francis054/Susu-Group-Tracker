@@ -9,8 +9,15 @@ import {
   parseGhsToPesewas,
 } from './formatter.js';
 
-export async function runCli(): Promise<void> {
-  const rl = readline.createInterface({ input, output });
+export async function runCli(
+  customInput: NodeJS.ReadableStream = input,
+  customOutput: NodeJS.WritableStream = output
+): Promise<void> {
+  const rl = readline.createInterface({
+    input: customInput,
+    output: customOutput,
+    terminal: false,
+  });
 
   console.log('==================================================');
   console.log('       WELCOME TO SUSU GROUP TRACKER (GHANA)      ');

@@ -18,7 +18,7 @@ export function getApplicationName(): string {
 }
 
 // Auto-run CLI if file is executed directly
-if (process.argv[1] && process.argv[1].endsWith('index.js')) {
+if (process.argv[1] && (process.argv[1].endsWith('index.js') || process.argv[1].endsWith('index.ts'))) {
   runCli().catch((err) => {
     console.error('Fatal CLI Error:', err);
     process.exit(1);
