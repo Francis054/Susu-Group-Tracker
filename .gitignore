@@ -1,0 +1,22 @@
+# Dependencies
+node_modules/
+
+# Generated build output
+dist/
+
+# Test coverage reports
+coverage/
+
+# Local environment files
+.env
+*.local
+
+# Project specifications and agent instructions
+AGENTS.md
+requirements.md
+implementation-plan.md
+
+# Logs and runtime caches
+*.log
+.DS_Store
+Thumbs.db
