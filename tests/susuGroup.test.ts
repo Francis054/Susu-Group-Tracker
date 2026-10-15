@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SusuGroup } from '../src/domain/susuGroup.js';
+import { SusuGroup } from '../src/module/susuGroup.js';
 import { ghsToPesewas } from '../src/types.js';
 
 describe('SusuGroup — Milestone 4: Group Creation & Member Registration', () => {
@@ -75,5 +75,92 @@ describe('SusuGroup — Milestone 4: Group Creation & Member Registration', () =
     expect(group.getMemberById('mem_1')?.name).toBe('Ama');
     expect(group.getMemberByName('kofi')?.id).toBe('mem_2');
     expect(group.getMemberByName('Unknown')).toBeUndefined();
+  });
+});
+
+describe('SusuGroup — Milestone 5: Contribution Tracking & Partial Payments', () => {
+  it('should record a full weekly payment in a single transaction', () => {
+    const group = new SusuGroup('Osu Club', ghsToPesewas(50)); // 5000 pesewas
+    const ama = group.registerMember('Ama');
+
+    const tx = group.recordPayment(ama.id, 5000);
+
+    expect(tx.memberId).toBe('mem_1');
+    expect(tx.weekNumber).toBe(1);
+    expect(tx.amountPesewas).toBe(5000);
+    expect(group.getMemberPaidAmountThisWeek('mem_1')).toBe(5000);
+    expect(group.getMemberBalanceThisWeek('mem_1')).toBe(0);
+  });
+
+  it('should support multiple partial payments totaling the weekly obligation', () => {
+    const group = new SusuGroup('Osu Club', ghsToPesewas(50)); // 5000 pesewas
+    group.registerMember('Kofi');
+
+    // Kofi makes first partial payment of 2000 pesewas (GH₵20)
+    const tx1 = group.recordPayment('Kofi', 2000);
+    expect(tx1.amountPesewas).toBe(2000);
+    expect(group.getMemberPaidAmountThisWeek('mem_1')).toBe(2000);
+    expect(group.getMemberBalanceThisWeek('mem_1')).toBe(3000);
+
+    // Kofi makes second partial payment of 3000 pesewas (GH₵30)
+    const tx2 = group.recordPayment('Kofi', 3000);
+    expect(tx2.amountPesewas).toBe(3000);
+    expect(group.getMemberPaidAmountThisWeek('mem_1')).toBe(5000);
+    expect(group.getMemberBalanceThisWeek('mem_1')).toBe(0);
+
+    const txs = group.getTransactions(1);
+    expect(txs).toHaveLength(2);
+  });
+
+  it('should reject payments from unknown members', () => {
+    const group = new SusuGroup('Osu Club', ghsToPesewas(50));
+    group.registerMember('Ama');
+
+    expect(() => group.recordPayment('Stranger', 5000)).toThrow(
+      'Unknown member: "Stranger". Only registered members can make contributions.'
+    );
+  });
+
+  it('should reject zero or negative payment amounts', () => {
+    const group = new SusuGroup('Osu Club', ghsToPesewas(50));
+    group.registerMember('Ama');
+
+    expect(() => group.recordPayment('Ama', 0)).toThrow(
+      'Payment amount must be a positive integer in pesewas.'
+    );
+    expect(() => group.recordPayment('Ama', -500)).toThrow(
+      'Payment amount must be a positive integer in pesewas.'
+    );
+    expect(() => group.recordPayment('Ama', 10.5)).toThrow(
+      'Payment amount must be a positive integer in pesewas.'
+    );
+  });
+
+  it('should reject payments that exceed the remaining weekly balance', () => {
+    const group = new SusuGroup('Osu Club', ghsToPesewas(50)); // 5000 pesewas
+    group.registerMember('Ama');
+
+    // Attempting to pay 6000 pesewas (GH₵60) when requirement is 5000
+    expect(() => group.recordPayment('Ama', 6000)).toThrow(
+      'Payment of 6000 pesewas exceeds remaining balance of 5000 pesewas for week 1.'
+    );
+
+    // Pay 4000 first, then attempt to pay 2000 when only 1000 is owed
+    group.recordPayment('Ama', 4000);
+    expect(() => group.recordPayment('Ama', 2000)).toThrow(
+      'Payment of 2000 pesewas exceeds remaining balance of 1000 pesewas for week 1.'
+    );
+  });
+
+  it('should lock member registration once contributions begin', () => {
+    const group = new SusuGroup('Osu Club', ghsToPesewas(50));
+    group.registerMember('Ama');
+
+    // Once Ama pays, cycle begins
+    group.recordPayment('Ama', 2000);
+
+    expect(() => group.registerMember('Kofi')).toThrow(
+      'Members can only be added before the first week starts.'
+    );
   });
 });
