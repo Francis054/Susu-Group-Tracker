@@ -140,12 +140,10 @@ describe('SusuGroup — Milestone 5: Contribution Tracking & Partial Payments', 
     const group = new SusuGroup('Osu Club', ghsToPesewas(50)); // 5000 pesewas
     group.registerMember('Ama');
 
-    // Attempting to pay 6000 pesewas (GH₵60) when requirement is 5000
     expect(() => group.recordPayment('Ama', 6000)).toThrow(
       'Payment of 6000 pesewas exceeds remaining balance of 5000 pesewas for week 1.'
     );
 
-    // Pay 4000 first, then attempt to pay 2000 when only 1000 is owed
     group.recordPayment('Ama', 4000);
     expect(() => group.recordPayment('Ama', 2000)).toThrow(
       'Payment of 2000 pesewas exceeds remaining balance of 1000 pesewas for week 1.'
@@ -156,11 +154,114 @@ describe('SusuGroup — Milestone 5: Contribution Tracking & Partial Payments', 
     const group = new SusuGroup('Osu Club', ghsToPesewas(50));
     group.registerMember('Ama');
 
-    // Once Ama pays, cycle begins
     group.recordPayment('Ama', 2000);
 
     expect(() => group.registerMember('Kofi')).toThrow(
       'Members can only be added before the first week starts.'
     );
+  });
+});
+
+describe('SusuGroup — Milestones 6 & 7: Week Closure, Balances & Payout Rotation', () => {
+  it('should accurately calculate payment statuses and weekly records', () => {
+    const group = new SusuGroup('Unity Group', ghsToPesewas(100)); // 10000 pesewas
+    const ama = group.registerMember('Ama');
+    const kofi = group.registerMember('Kofi');
+    const esi = group.registerMember('Esi');
+
+    group.recordPayment(ama.id, 10000); // Fully paid
+    group.recordPayment(kofi.id, 4000); // Partial
+
+    expect(group.getMemberStatus(ama.id)).toBe('PAID');
+    expect(group.getMemberStatus(kofi.id)).toBe('PARTIAL');
+    expect(group.getMemberStatus(esi.id)).toBe('UNPAID');
+
+    const records = group.getWeeklyContributionRecords();
+    expect(records).toHaveLength(3);
+    expect(records.find((r) => r.memberId === ama.id)?.status).toBe('PAID');
+    expect(records.find((r) => r.memberId === kofi.id)?.status).toBe('PARTIAL');
+    expect(records.find((r) => r.memberId === esi.id)?.status).toBe('UNPAID');
+  });
+
+  it('should prevent week closure if members have outstanding balances', () => {
+    const group = new SusuGroup('Unity Group', ghsToPesewas(100)); // 10000 pesewas
+    group.registerMember('Ama');
+    group.registerMember('Kofi');
+    group.registerMember('Esi');
+
+    group.recordPayment('Ama', 10000);
+    group.recordPayment('Kofi', 5000); // Owes 5000
+    // Esi owes 10000
+
+    expect(() => group.closeWeek()).toThrow(
+      'Cannot close week 1. Outstanding balances: Kofi owes 5000 pesewas, Esi owes 10000 pesewas.'
+    );
+    expect(group.currentWeek).toBe(1);
+    expect(group.getPayoutHistory()).toHaveLength(0);
+  });
+
+  it('should reject week closure for an empty group', () => {
+    const group = new SusuGroup('Empty Group', 5000);
+    expect(() => group.closeWeek()).toThrow(
+      'Cannot close week for a group with no registered members.'
+    );
+  });
+
+  it('should successfully close week, pay entire pot to recipient in join order, and advance week', () => {
+    const group = new SusuGroup('Unity Group', ghsToPesewas(50)); // 5000 pesewas each
+    const ama = group.registerMember('Ama');
+    const kofi = group.registerMember('Kofi');
+    const esi = group.registerMember('Esi');
+
+    // Week 1: Ama, Kofi, Esi all pay 5000
+    group.recordPayment('Ama', 5000);
+    group.recordPayment('Kofi', 5000);
+    group.recordPayment('Esi', 5000);
+
+    // Week 1 closure -> Pot = 3 * 5000 = 15000 pesewas (GH₵150)
+    // First in joining order is Ama
+    const payout1 = group.closeWeek();
+
+    expect(payout1.weekNumber).toBe(1);
+    expect(payout1.recipientMemberId).toBe(ama.id);
+    expect(payout1.recipientName).toBe('Ama');
+    expect(payout1.payoutAmountPesewas).toBe(15000);
+    expect(group.currentWeek).toBe(2);
+
+    // Week 2: all contribute again
+    group.recordPayment('Ama', 5000);
+    group.recordPayment('Kofi', 5000);
+    group.recordPayment('Esi', 5000);
+
+    // Week 2 closure -> Second in joining order is Kofi
+    const payout2 = group.closeWeek();
+
+    expect(payout2.weekNumber).toBe(2);
+    expect(payout2.recipientMemberId).toBe(kofi.id);
+    expect(payout2.recipientName).toBe('Kofi');
+    expect(payout2.payoutAmountPesewas).toBe(15000);
+    expect(group.currentWeek).toBe(3);
+
+    // Week 3: all contribute again
+    group.recordPayment('Ama', 5000);
+    group.recordPayment('Kofi', 5000);
+    group.recordPayment('Esi', 5000);
+
+    // Week 3 closure -> Third in joining order is Esi
+    const payout3 = group.closeWeek();
+
+    expect(payout3.weekNumber).toBe(3);
+    expect(payout3.recipientMemberId).toBe(esi.id);
+    expect(payout3.recipientName).toBe('Esi');
+    expect(payout3.payoutAmountPesewas).toBe(15000);
+
+    // Cycle is now complete: all 3 members received payout
+    expect(group.isCycleCompleted).toBe(true);
+
+    const history = group.getPayoutHistory();
+    expect(history).toHaveLength(3);
+    expect(history[0].recipientName).toBe('Ama');
+    expect(history[1].recipientName).toBe('Kofi');
+    expect(history[2].recipientName).toBe('Esi');
   });
 });

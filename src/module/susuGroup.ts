@@ -1,10 +1,23 @@
-import { Member, PaymentTransaction, Pesewas } from '../types.js';
+import {
+  Member,
+  PaymentStatus,
+  PaymentTransaction,
+  PayoutRecord,
+  Pesewas,
+  WeeklyContributionRecord,
+} from '../types.js';
+
+export interface OutstandingBalanceReport {
+  readonly member: Member;
+  readonly balancePesewas: Pesewas;
+}
 
 export class SusuGroup {
   private readonly groupName: string;
   private readonly weeklyContributionPesewas: Pesewas;
   private readonly membersList: Member[] = [];
   private readonly transactions: PaymentTransaction[] = [];
+  private readonly payoutHistoryList: PayoutRecord[] = [];
   private currentWeekNumber: number = 1;
   private cycleStarted: boolean = false;
 
@@ -36,6 +49,13 @@ export class SusuGroup {
 
   get isCycleStarted(): boolean {
     return this.cycleStarted;
+  }
+
+  get isCycleCompleted(): boolean {
+    return (
+      this.membersList.length > 0 &&
+      this.payoutHistoryList.length >= this.membersList.length
+    );
   }
 
   registerMember(name: string): Member {
@@ -123,6 +143,79 @@ export class SusuGroup {
   getMemberBalanceThisWeek(memberId: string): Pesewas {
     const paid = this.getMemberPaidAmountThisWeek(memberId);
     return this.weeklyContributionPesewas - paid;
+  }
+
+  getMemberStatus(memberId: string): PaymentStatus {
+    const paid = this.getMemberPaidAmountThisWeek(memberId);
+    if (paid === 0) {
+      return 'UNPAID';
+    }
+    if (paid >= this.weeklyContributionPesewas) {
+      return 'PAID';
+    }
+    return 'PARTIAL';
+  }
+
+  getWeeklyContributionRecords(): readonly WeeklyContributionRecord[] {
+    return this.membersList.map((member) => ({
+      memberId: member.id,
+      weekNumber: this.currentWeekNumber,
+      amountPaidPesewas: this.getMemberPaidAmountThisWeek(member.id),
+      status: this.getMemberStatus(member.id),
+    }));
+  }
+
+  getOutstandingBalances(): readonly OutstandingBalanceReport[] {
+    const outstanding: OutstandingBalanceReport[] = [];
+    for (const member of this.membersList) {
+      const balance = this.getMemberBalanceThisWeek(member.id);
+      if (balance > 0) {
+        outstanding.push({
+          member,
+          balancePesewas: balance,
+        });
+      }
+    }
+    return outstanding;
+  }
+
+  closeWeek(): PayoutRecord {
+    if (this.membersList.length === 0) {
+      throw new Error('Cannot close week for a group with no registered members.');
+    }
+
+    const outstanding = this.getOutstandingBalances();
+    if (outstanding.length > 0) {
+      const details = outstanding
+        .map((o) => `${o.member.name} owes ${o.balancePesewas} pesewas`)
+        .join(', ');
+      throw new Error(
+        `Cannot close week ${this.currentWeekNumber}. Outstanding balances: ${details}.`
+      );
+    }
+
+    // Determine recipient based on joining order (0-indexed rotation)
+    const recipientIndex = (this.currentWeekNumber - 1) % this.membersList.length;
+    const recipient = this.membersList[recipientIndex];
+
+    const totalPotPesewas = this.membersList.length * this.weeklyContributionPesewas;
+
+    const payout: PayoutRecord = {
+      weekNumber: this.currentWeekNumber,
+      recipientMemberId: recipient.id,
+      recipientName: recipient.name,
+      payoutAmountPesewas: totalPotPesewas,
+      disbursedAt: new Date(),
+    };
+
+    this.payoutHistoryList.push(payout);
+    this.currentWeekNumber += 1;
+
+    return payout;
+  }
+
+  getPayoutHistory(): readonly PayoutRecord[] {
+    return [...this.payoutHistoryList];
   }
 
   getTransactions(weekNumber?: number): readonly PaymentTransaction[] {
